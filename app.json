@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "longevity-thread",
+    "name": "Longevity Thread",
     "slug": "longevity-thread",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,7 +8,9 @@
     "scheme": "longevitythread",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.thrivewell.longevitythread",
+      "supportsTablet": false
     },
     "android": {
       "adaptiveIcon": {
@@ -33,7 +35,14 @@
           "imageWidth": 76
         }
       ],
-      "@kingstinct/react-native-healthkit",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Longevity Thread reads your heart, sleep, and activity metrics so your care team can review them alongside your labs.",
+          "NSHealthUpdateUsageDescription": false,
+          "background": true
+        }
+      ],
       "expo-secure-store",
       "expo-build-properties"
     ],
