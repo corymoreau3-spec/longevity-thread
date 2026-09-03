@@ -8,6 +8,27 @@ that reason.
 Everything below needs an Apple ID and physical access to the phone, so
 it has to be run by you.
 
+## Fastest path: build locally with Xcode
+
+If Xcode is installed and you have a paid Apple Developer membership,
+skip the EAS build queue entirely for day-to-day work:
+
+```
+npx expo run:ios --device
+```
+
+This prebuilds, compiles on this Mac, and installs straight onto a
+connected iPhone. Signing lasts a year on a paid membership rather than
+the seven days a free Apple ID gets.
+
+It generates an `ios/` directory. That is already in `.gitignore`, and it
+should stay that way — the native project is generated from `app.json` by
+config plugins, and committing it means owning it by hand forever. If it
+ever gets out of step, delete it and let the next run regenerate it.
+
+Use EAS builds when someone else needs to install the app, or for
+TestFlight and the App Store. Use the local build while iterating.
+
 ## One time
 
 1. An Apple Developer Program membership (~$99/year), if you do not have

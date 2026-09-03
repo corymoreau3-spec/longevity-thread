@@ -13,36 +13,81 @@ import { startObservers } from '@/health/observers'
 import { syncAll, type SyncOutcome } from '@/health/sync'
 import { supabase } from '@/lib/supabase'
 
-type Row = {
+/**
+ * Day boundaries are resolved in the phone's own timezone rather than the
+ * clinic's. A patient's "yesterday" is where they were standing, and
+ * clinic_settings is not readable by patients anyway.
+ */
+const TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+
+/** Daily value with duplicate sources already resolved by the database. */
+type DailyRow = {
+  metric: string
+  local_day: string
+  source_rank: number
+  origin_model: string | null
+  value: number
+  unit: string
+  sample_count: number
+}
+
+/** One raw sample, as stored. Used to show what precedence discarded. */
+type SampleRow = {
   id: string
   metric: string
   effective_start: string
-  effective_end: string
   value: number
   unit: string
+  origin_model: string | null
   origin_name: string | null
-  origin_device: string | null
+}
+
+/**
+ * Sleep is stored in seconds and steps as a bare count, which are hard to
+ * eyeball. This only affects display; nothing here changes a stored value.
+ */
+function format(value: number, unit: string) {
+  if (unit === 's') {
+    const hours = Math.floor(value / 3600)
+    const minutes = Math.round((value % 3600) / 60)
+    return `${hours}h ${minutes}m`
+  }
+  const rounded = Math.round(value * 10) / 10
+  return `${rounded.toLocaleString()} ${unit}`
 }
 
 export default function Observations() {
-  const [rows, setRows] = useState<Row[]>([])
+  const [daily, setDaily] = useState<DailyRow[]>([])
+  const [samples, setSamples] = useState<SampleRow[]>([])
+  const [showRaw, setShowRaw] = useState(false)
   const [outcomes, setOutcomes] = useState<readonly SyncOutcome[]>([])
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    // RLS scopes this to the signed-in patient's own rows.
-    const { data, error } = await supabase
+    // Duplicate sources are resolved server-side: the Watch wins over the
+    // phone, which wins over third-party apps, decided per metric per day.
+    const daily = await supabase
+      .rpc('preferred_observations', { p_timezone: TIMEZONE })
+      .order('local_day', { ascending: false })
+      .limit(100)
+
+    // Every sample, including the copies precedence dropped. RLS scopes
+    // both queries to the signed-in patient.
+    const raw = await supabase
       .from('observations')
       .select(
-        'id, metric, effective_start, effective_end, value, unit, origin_name, origin_device',
+        'id, metric, effective_start, value, unit, origin_model, origin_name',
       )
       .is('deleted_at', null)
       .order('effective_start', { ascending: false })
       .limit(100)
 
-    if (error) setError(error.message)
-    else setRows((data ?? []) as Row[])
+    if (daily.error) setError(daily.error.message)
+    else setDaily((daily.data ?? []) as DailyRow[])
+
+    if (raw.error) setError(raw.error.message)
+    else setSamples((raw.data ?? []) as SampleRow[])
   }, [])
 
   const sync = useCallback(async () => {
@@ -60,59 +105,92 @@ export default function Observations() {
 
   useEffect(() => {
     void sync()
-    // Background delivery keeps this current after the first foreground run.
     void startObservers()
   }, [sync])
 
   const failures = outcomes.filter((o) => o.error)
+  const discarded = samples.length - daily.reduce((n, d) => n + d.sample_count, 0)
+
+  const header = (
+    <View style={styles.header}>
+      {busy ? <ActivityIndicator /> : null}
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {failures.map((f) => (
+        <Text key={f.metric} style={styles.error}>
+          {f.metric}: {f.error}
+        </Text>
+      ))}
+
+      <Text style={styles.meta}>
+        {TIMEZONE} · {samples.length} samples stored
+        {discarded > 0 ? ` · ${discarded} outranked` : ''}
+      </Text>
+
+      <Button
+        title={showRaw ? 'Show daily totals' : 'Show every sample'}
+        onPress={() => setShowRaw((v) => !v)}
+      />
+      <Button title="Sync now" onPress={sync} />
+      <Button title="Sign out" onPress={() => supabase.auth.signOut()} />
+    </View>
+  )
+
+  const empty = busy ? null : (
+    <Text style={styles.empty}>
+      Nothing yet. Grant Health access when prompted, then pull to refresh.
+      {'\n\n'}
+      An empty list is not proof of a bug: HealthKit does not report read
+      denials, so a declined metric looks the same as one with no data.
+    </Text>
+  )
+
+  if (showRaw) {
+    return (
+      <FlatList
+        data={samples}
+        keyExtractor={(r) => r.id}
+        refreshControl={<RefreshControl refreshing={busy} onRefresh={sync} />}
+        contentContainerStyle={styles.list}
+        ListHeaderComponent={header}
+        ListEmptyComponent={empty}
+        renderItem={({ item }) => (
+          <View style={styles.row}>
+            <Text style={styles.metric}>{item.metric}</Text>
+            <Text style={styles.value}>{format(item.value, item.unit)}</Text>
+            <Text style={styles.meta}>
+              {new Date(item.effective_start).toLocaleString()}
+            </Text>
+            <Text style={styles.meta}>
+              {item.origin_model ?? 'unknown device'}
+              {item.origin_name ? ` · ${item.origin_name}` : ''}
+            </Text>
+          </View>
+        )}
+      />
+    )
+  }
 
   return (
     <FlatList
-      data={rows}
-      keyExtractor={(r) => r.id}
+      data={daily}
+      keyExtractor={(r) => `${r.metric}:${r.local_day}`}
       refreshControl={<RefreshControl refreshing={busy} onRefresh={sync} />}
       contentContainerStyle={styles.list}
-      ListHeaderComponent={
-        <View style={styles.header}>
-          {busy ? <ActivityIndicator /> : null}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          {failures.map((f) => (
-            <Text key={f.metric} style={styles.error}>
-              {f.metric}: {f.error}
-            </Text>
-          ))}
-          <Button title="Sync now" onPress={sync} />
-          <Button
-            title="Sign out"
-            onPress={() => supabase.auth.signOut()}
-          />
-        </View>
-      }
-      ListEmptyComponent={
-        busy ? null : (
-          <Text style={styles.empty}>
-            No observations yet. Grant Health access when prompted, then pull
-            to refresh.
-          </Text>
-        )
-      }
+      ListHeaderComponent={header}
+      ListEmptyComponent={empty}
       renderItem={({ item }) => (
         <View style={styles.row}>
           <Text style={styles.metric}>{item.metric}</Text>
-          <Text style={styles.value}>
-            {item.value} {item.unit}
-          </Text>
-          <Text style={styles.meta}>
-            {new Date(item.effective_start).toLocaleString()}
-          </Text>
+          <Text style={styles.value}>{format(item.value, item.unit)}</Text>
+          <Text style={styles.meta}>{item.local_day}</Text>
           {/*
-            Origin is shown rather than aggregated. The same activity
-            arrives from the Watch, the phone and third-party apps, and no
-            source-precedence rule has been chosen yet — summing steps here
-            would triple-count them.
+            Which device won, and how many samples went into the figure.
+            If this says "Watch" while the raw list also shows iPhone rows
+            for the same day, precedence is doing its job.
           */}
           <Text style={styles.meta}>
-            {item.origin_name ?? item.origin_device ?? 'unknown source'}
+            {item.origin_model ?? 'unknown device'} · {item.sample_count}{' '}
+            {item.sample_count === 1 ? 'sample' : 'samples'}
           </Text>
         </View>
       )}
@@ -132,5 +210,5 @@ const styles = StyleSheet.create({
   value: { fontSize: 18, fontVariant: ['tabular-nums'] },
   meta: { fontSize: 12, opacity: 0.5 },
   error: { color: '#c0392b' },
-  empty: { opacity: 0.6, textAlign: 'center', marginTop: 40 },
+  empty: { opacity: 0.6, textAlign: 'center', marginTop: 40, lineHeight: 20 },
 })
