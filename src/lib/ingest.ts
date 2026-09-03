@@ -20,6 +20,7 @@ export type ObservationInput = {
   readonly unit: string
   readonly origin_device: string | null
   readonly origin_name: string | null
+  readonly origin_model: string | null
 }
 
 export type MetricBatch = {

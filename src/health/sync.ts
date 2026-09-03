@@ -33,18 +33,25 @@ export type SyncOutcome = {
 /**
  * HealthKit reports the same activity from the Watch, the phone, and any
  * third-party app that wrote it, each as a distinct sample with its own
- * uuid. All of them are stored, tagged with the bundle id that produced
- * them. Choosing between them is a read-time decision and deliberately
- * does not happen here — an anchored query performs no source
- * deduplication of its own, and silently dropping copies at ingest would
- * throw away the evidence needed to make that choice later.
+ * uuid. All of them are stored. Choosing between them stays a read-time
+ * decision — `preferred_observations()` applies the precedence rule —
+ * because an anchored query performs no source deduplication of its own,
+ * and dropping copies at ingest would throw away the evidence.
+ *
+ * `origin_model` is the part that actually separates a Watch from a
+ * phone. Apple Health reports `com.apple.health.<uuid>` as the bundle id
+ * for both, differing only in the uuid, so the bundle id alone cannot
+ * tell them apart. HKDevice.model can, and is optional — third-party
+ * apps often set no device at all, which correctly ranks them last.
  */
 function originOf(sample: {
   sourceRevision: { source: { bundleIdentifier: string; name: string } }
+  device?: { model?: string }
 }) {
   return {
     origin_device: sample.sourceRevision?.source?.bundleIdentifier ?? null,
     origin_name: sample.sourceRevision?.source?.name ?? null,
+    origin_model: sample.device?.model ?? null,
   }
 }
 

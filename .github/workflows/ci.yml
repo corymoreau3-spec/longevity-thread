@@ -1,0 +1,43 @@
+# Typecheck and config validation on every pull request.
+#
+# The HealthKit code is written against a library that changes shape
+# between versions, so a strict-mode typecheck against the installed
+# types is the cheapest guard against writing to an API that no longer
+# exists.
+#
+# `expo config --type prebuild` evaluates the config plugin chain, which
+# catches a malformed app.json or a plugin that fails to resolve — both
+# of which otherwise only surface during a build.
+#
+# Deliberately not running `expo lint`: there is no ESLint config in the
+# repo, so it would prompt for setup and hang.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  typecheck:
+    name: Typecheck and validate config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx tsc --noEmit
+
+      # Placeholder values: the config evaluation only needs the vars to
+      # exist, and no real project is contacted.
+      - run: npx expo config --type prebuild
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
