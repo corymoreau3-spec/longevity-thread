@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
 
 import { fetchAlerts, type Alert } from '@/lib/health-data'
 import { supabase } from '@/lib/supabase'
+import { ScreenHeader } from '@/components/ScreenHeader'
 import { theme } from '@/theme'
 
 /**
@@ -46,12 +46,13 @@ export default function Updates() {
   }, [load])
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.color.bg }} edges={['top']}>
+    <View style={{ flex: 1, backgroundColor: theme.color.bg }}>
       <ScrollView
-        contentContainerStyle={{ padding: theme.space(4), paddingBottom: theme.space(10) }}
+        contentContainerStyle={{ paddingBottom: theme.space(10) }}
         refreshControl={<RefreshControl refreshing={busy} onRefresh={load} />}
       >
-        <Text style={{ fontSize: theme.font.display, color: theme.color.text }}>Updates</Text>
+        <ScreenHeader title="Updates" />
+        <View style={{ paddingHorizontal: theme.space(5), marginTop: -theme.space(4) }}>
         <Text
           style={{
             fontSize: theme.font.small,
@@ -129,7 +130,8 @@ export default function Updates() {
           reach your care team. If you feel unwell, contact the clinic or
           seek medical care directly.
         </Text>
+        </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   )
 }

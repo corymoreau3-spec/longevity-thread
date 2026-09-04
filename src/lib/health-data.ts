@@ -24,9 +24,21 @@ export async function fetchDaily(days = 90): Promise<DailyPoint[]> {
   const since = new Date()
   since.setDate(since.getDate() - days)
 
+  const sinceDay = since.toISOString().slice(0, 10)
+
+  // p_since has to go into the call, not onto the result. PostgREST applies
+  // .gte() to what the function returns, so passing the window only as a
+  // filter made the database resolve source precedence across the patient's
+  // entire history and then discard all but the last 90 days. That took
+  // 18.7s against the 8s statement timeout, and the screen showed
+  // "canceling statement due to statement timeout" instead of any data.
+  // The .gte() stays as a cheap guard on timezone edges at the boundary.
   const { data, error } = await supabase
-    .rpc('preferred_observations', { p_timezone: TIMEZONE })
-    .gte('local_day', since.toISOString().slice(0, 10))
+    .rpc('preferred_observations', {
+      p_timezone: TIMEZONE,
+      p_since: sinceDay,
+    })
+    .gte('local_day', sinceDay)
     .order('local_day', { ascending: true })
 
   if (error) throw error
@@ -85,4 +97,97 @@ export function toSeries(points: DailyPoint[], metric: string): Series {
     recentAvg: avg(recent),
     baselineAvg: avg(baseline),
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Labs                                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The lab surface is deliberately separate from everything above.
+ *
+ * TW-SPEC-DASH-001 §1 keeps wearable metrics off the lab surface and lab
+ * markers off the wearable surface: different cadence, different
+ * reliability, different query path. They share a screen style and nothing
+ * else. Classification is decided in SQL and read here as-is — nothing in
+ * this file may derive, adjust or re-describe a classification, and there
+ * is no aggregate score anywhere in it.
+ */
+
+export type LabPanel = {
+  panel_id: string
+  draw_date: string
+  lab_partner: string | null
+  release_state: string
+  gated: boolean
+  markers_total: number
+  markers_resolved: number
+  in_range: number
+  borderline: number
+  out_of_range: number
+  not_classified: number
+  pending_review: number
+  prior_draw_date: string | null
+  has_interim_classification: boolean
+}
+
+export type LabMarker = {
+  marker_name: string
+  marker_category: string | null
+  unit: string | null
+  current_value: number | null
+  current_result: string
+  optimal_range_low: number | null
+  optimal_range_high: number | null
+  optimal_range_text: string | null
+  prior_value: number | null
+  prior_result: string | null
+  prior_draw_date: string | null
+  pct_change: number | null
+  range_changed: boolean
+}
+
+export type Dashboard = {
+  panel: LabPanel | null
+  markers: LabMarker[]
+}
+
+/** The patient row belonging to the signed-in user. */
+export async function fetchPatient(): Promise<{ id: string; first_name: string | null } | null> {
+  const { data, error } = await supabase
+    .from('patients')
+    .select('id, first_name')
+    .maybeSingle()
+
+  if (error) throw error
+  return data ?? null
+}
+
+/**
+ * Panel, markers and domain status in one payload.
+ *
+ * §5.4: the app calls the RPC and nothing else. Review gating is enforced
+ * inside it, so an unreleased panel comes back with `gated` true and no
+ * values — the client must not try to fill that gap from another query.
+ */
+export async function fetchDashboard(patientId: string): Promise<Dashboard> {
+  const { data, error } = await supabase.rpc('get_dashboard', {
+    p_patient_id: patientId,
+  })
+
+  if (error) throw error
+
+  const payload = (data ?? {}) as { panel?: LabPanel; markers?: LabMarker[] }
+  return {
+    panel: payload.panel ?? null,
+    markers: payload.markers ?? [],
+  }
+}
+
+export const RESULT_LABEL: Record<string, string> = {
+  in_range: 'In range',
+  borderline: 'Borderline',
+  out_of_range: 'Outside optimal',
+  pending_review: 'Pending review',
+  not_classified: 'No optimized range',
 }

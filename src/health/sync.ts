@@ -9,6 +9,7 @@ import {
   type MetricBatch,
   type ObservationInput,
 } from '../lib/ingest'
+import { ensureFreshSession } from '../lib/supabase'
 import { ensureAuthorized } from './authorization'
 import {
   ASLEEP_VALUES,
@@ -254,6 +255,14 @@ export async function syncAll(): Promise<readonly SyncOutcome[]> {
   // Nothing below may run before this resolves.
   const ready = await ensureAuthorized()
   if (!ready) {
+    return [] as const
+  }
+
+  // A token that expired while the app was closed produces a 401 from the
+  // edge function on the very first call, which used to surface on the
+  // Today screen as a hard error. Refresh before touching the network.
+  const signedIn = await ensureFreshSession()
+  if (!signedIn) {
     return [] as const
   }
 

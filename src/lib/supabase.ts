@@ -75,6 +75,37 @@ export const supabase = createClient(url, anonKey, {
   },
 })
 
+/**
+ * Guarantees a usable access token before a request that cannot tolerate a
+ * stale one.
+ *
+ * supabase-js refreshes lazily and only while it thinks the app is running,
+ * so a cold start can fire a request carrying a token that expired while the
+ * app was closed. That is what produced the 401s from ingest-observations on
+ * launch: the session existed, so the root layout routed straight to the
+ * tabs, and the first sync went out with a dead token.
+ *
+ * Returns false when there is no session at all — the caller should do
+ * nothing and let the root layout route to sign-in.
+ */
+const EXPIRY_SKEW_SECONDS = 60
+
+export async function ensureFreshSession(): Promise<boolean> {
+  const { data } = await supabase.auth.getSession()
+  const session = data.session
+  if (!session) return false
+
+  const now = Math.floor(Date.now() / 1000)
+  const expiresAt = session.expires_at ?? 0
+
+  // Still comfortably valid.
+  if (expiresAt - now > EXPIRY_SKEW_SECONDS) return true
+
+  const { data: refreshed, error } = await supabase.auth.refreshSession()
+  if (error) return false
+  return refreshed.session != null
+}
+
 // supabase-js only knows to refresh while it believes the app is running.
 AppState.addEventListener('change', (state) => {
   if (state === 'active') {

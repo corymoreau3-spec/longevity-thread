@@ -9,13 +9,13 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
 
 import {
   fetchChatHistory,
   sendMessage,
   type ChatMessage,
 } from '@/lib/assistant'
+import { ScreenHeader } from '@/components/ScreenHeader'
 import { theme } from '@/theme'
 
 /**
@@ -119,7 +119,7 @@ export default function Ask() {
   )
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.color.bg }} edges={['top']}>
+    <View style={{ flex: 1, backgroundColor: theme.color.bg }}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -127,10 +127,11 @@ export default function Ask() {
       >
         <ScrollView
           ref={scroller}
-          contentContainerStyle={{ padding: theme.space(4), paddingBottom: theme.space(4) }}
+          contentContainerStyle={{ paddingBottom: theme.space(4) }}
           onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: true })}
         >
-          <Text style={{ fontSize: theme.font.display, color: theme.color.text }}>Ask</Text>
+          <ScreenHeader title="Ask" />
+          <View style={{ paddingHorizontal: theme.space(5), marginTop: -theme.space(4) }}>
           <Text
             style={{
               fontSize: theme.font.small,
@@ -181,6 +182,7 @@ export default function Ask() {
               {error}
             </Text>
           ) : null}
+          </View>
         </ScrollView>
 
         <View
@@ -226,6 +228,6 @@ export default function Ask() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   )
 }

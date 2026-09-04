@@ -6,10 +6,10 @@ import {
   Text,
   View,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
 import { Link } from 'expo-router'
 
 import { MetricCard } from '@/components/MetricCard'
+import { ScreenHeader } from '@/components/ScreenHeader'
 import { startObservers } from '@/health/observers'
 import { syncAll } from '@/health/sync'
 import { fetchAlerts, fetchDaily, toSeries, type Series } from '@/lib/health-data'
@@ -35,25 +35,43 @@ export default function Today() {
     const [daily, alerts] = await Promise.all([fetchDaily(90), fetchAlerts()])
     setSeries(METRICS.map((m) => toSeries(daily, m)))
     setUnread(alerts.filter((a) => !a.patient_seen_at).length)
-    setFirstLoad(false)
   }, [])
 
   const refresh = useCallback(async () => {
     setBusy(true)
     setError(null)
+
     // Stored data is shown before syncing, so the screen is never empty
     // while a long sync runs.
+    let loaded = false
     try {
       await load()
+      loaded = true
     } catch (err: any) {
       setError(String(err?.message ?? err))
+    } finally {
+      // Always leave the first-load state, even on failure. Clearing this
+      // only on success meant one bad request at launch left the screen
+      // spinning forever, with no way back short of killing the app —
+      // long after the data was fine.
+      setFirstLoad(false)
     }
+
     try {
       await syncAll()
       await load()
+      setError(null)
     } catch (err: any) {
-      setError(String(err?.message ?? err))
+      // Syncing is how new data arrives, not how existing data is read. If
+      // the read already succeeded, say so quietly rather than replacing a
+      // working screen with an error.
+      setError(
+        loaded
+          ? 'Could not check for new data just now. Showing what is already saved.'
+          : String(err?.message ?? err),
+      )
     }
+
     setBusy(false)
   }, [load])
 
@@ -62,21 +80,31 @@ export default function Today() {
     startObservers().catch(() => {})
   }, [refresh])
 
+  const latestDay = series
+    .map((s) => s.latest?.local_day)
+    .filter((d): d is string => Boolean(d))
+    .sort()
+    .at(-1)
+
+  const metaLine = latestDay
+    ? `Through ${new Date(`${latestDay}T00:00:00`).toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+      })} · Apple Health`
+    : undefined
+
   const withData = series.filter((s) => s.points.length > 0)
   const withoutData = series.filter((s) => s.points.length === 0)
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.color.bg }} edges={['top']}>
+    <View style={{ flex: 1, backgroundColor: theme.color.bg }}>
       <ScrollView
-        contentContainerStyle={{ padding: theme.space(4), paddingBottom: theme.space(10) }}
+        contentContainerStyle={{ paddingBottom: theme.space(10) }}
         refreshControl={<RefreshControl refreshing={busy && !firstLoad} onRefresh={refresh} />}
       >
-        <Text style={{ fontSize: theme.font.small, color: theme.color.textMuted }}>
-          {greeting()}
-        </Text>
-        <Text style={{ fontSize: theme.font.display, color: theme.color.text, marginTop: 2 }}>
-          Your day
-        </Text>
+        <ScreenHeader title={greeting()} meta={metaLine} />
+
+        <View style={{ paddingHorizontal: theme.space(5), marginTop: -theme.space(6) }}>
 
         {unreadAlerts > 0 ? (
           <Link href="/updates" asChild>
@@ -149,7 +177,8 @@ export default function Today() {
             ) : null}
           </>
         )}
+        </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   )
 }
