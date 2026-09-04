@@ -34,6 +34,26 @@ const FETCH_PAGE = 5000
 /** Stops a malformed anchor from looping forever. */
 const MAX_PAGES = 200
 
+/**
+ * How far back a first sync reaches.
+ *
+ * HealthKit will hand over a patient's entire history — for step counts
+ * that runs to hundreds of thousands of samples across several years, and
+ * daily step totals from 2019 have no clinical use. Bounding the window
+ * keeps the first sync to minutes rather than an evening.
+ *
+ * This only limits what is FETCHED. Anything already stored stays stored,
+ * and the window rolls forward with today's date, so ordinary syncing is
+ * unaffected — an anchored query only returns what changed anyway.
+ */
+const BACKFILL_MONTHS = 12
+
+function backfillStart(): Date {
+  const from = new Date()
+  from.setMonth(from.getMonth() - BACKFILL_MONTHS)
+  return from
+}
+
 export type SyncOutcome = {
   readonly metric: Metric
   readonly inserted: number
@@ -85,6 +105,7 @@ async function syncQuantity(
     // writing a correct number under the wrong label.
     const res = await queryQuantitySamplesWithAnchor(spec.identifier, {
       limit: FETCH_PAGE,
+      filter: { date: { startDate: backfillStart() } },
       ...(cursor ? { anchor: cursor } : {}),
     })
 
@@ -140,6 +161,7 @@ async function syncSleep(anchor: string | undefined): Promise<SyncOutcome> {
   for (let page = 0; page < MAX_PAGES; page++) {
     const res = await queryCategorySamplesWithAnchor(SLEEP_METRIC.identifier, {
       limit: FETCH_PAGE,
+      filter: { date: { startDate: backfillStart() } },
       ...(cursor ? { anchor: cursor } : {}),
     })
 
