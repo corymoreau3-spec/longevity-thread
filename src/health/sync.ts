@@ -20,8 +20,19 @@ import {
 
 const SOURCE = 'apple_health' as const
 
-/** Fetch everything an anchored query has for us in one pass. */
-const NO_LIMIT = 0
+/**
+ * Samples per HealthKit fetch.
+ *
+ * NOT unbounded. With no stored anchor HealthKit returns the patient's
+ * entire history, and step counts run to hundreds of thousands of samples
+ * over a few years. Pulling that across the native bridge in one call
+ * exhausts memory and iOS kills the app — with no JavaScript error,
+ * because the process is gone. Paging keeps each fetch bounded.
+ */
+const FETCH_PAGE = 5000
+
+/** Stops a malformed anchor from looping forever. */
+const MAX_PAGES = 200
 
 export type SyncOutcome = {
   readonly metric: Metric
@@ -59,39 +70,57 @@ async function syncQuantity(
   spec: QuantityMetricSpec,
   anchor: string | undefined,
 ): Promise<SyncOutcome> {
-  // The unit is deliberately not requested. Asking for one would need a
-  // cast past the library's per-identifier unit types; instead HealthKit
-  // returns its default and we check it is the one this metric expects, so
-  // a change to a default unit fails loudly here rather than silently
-  // writing a correct number under the wrong label.
-  const res = await queryQuantitySamplesWithAnchor(spec.identifier, {
-    limit: NO_LIMIT,
-    ...(anchor ? { anchor } : {}),
-  })
+  let cursor = anchor
+  let inserted = 0
+  let deleted = 0
 
-  const mismatch = res.samples.find((s) => s.unit !== spec.hkUnit)
-  if (mismatch) {
-    throw new Error(
-      `${spec.metric}: expected unit ${spec.hkUnit}, HealthKit returned ${mismatch.unit}`,
-    )
+  // Each page is fetched, uploaded, and its anchor persisted before the
+  // next page is requested. A crash or failure part-way through therefore
+  // costs one page, not the whole backfill.
+  for (let page = 0; page < MAX_PAGES; page++) {
+    // The unit is deliberately not requested. Asking for one would need a
+    // cast past the library's per-identifier unit types; instead HealthKit
+    // returns its default and we check it is the one this metric expects,
+    // so a change to a default unit fails loudly here rather than silently
+    // writing a correct number under the wrong label.
+    const res = await queryQuantitySamplesWithAnchor(spec.identifier, {
+      limit: FETCH_PAGE,
+      ...(cursor ? { anchor: cursor } : {}),
+    })
+
+    const mismatch = res.samples.find((s) => s.unit !== spec.hkUnit)
+    if (mismatch) {
+      throw new Error(
+        `${spec.metric}: expected unit ${spec.hkUnit}, HealthKit returned ${mismatch.unit}`,
+      )
+    }
+
+    const observations: ObservationInput[] = res.samples.map((s) => ({
+      metric: spec.metric,
+      external_id: s.uuid,
+      effective_start: s.startDate.toISOString(),
+      effective_end: s.endDate.toISOString(),
+      value: s.quantity,
+      unit: spec.unit,
+      ...originOf(s),
+    }))
+
+    const out = await send(spec.metric, {
+      metric: spec.metric,
+      anchor: res.newAnchor,
+      observations,
+      deleted_external_ids: res.deletedSamples.map((d) => d.uuid),
+    })
+
+    inserted += out.inserted
+    deleted += out.deleted
+    cursor = res.newAnchor
+
+    // A short page means HealthKit has nothing further past this anchor.
+    if (res.samples.length < FETCH_PAGE) break
   }
 
-  const observations: ObservationInput[] = res.samples.map((s) => ({
-    metric: spec.metric,
-    external_id: s.uuid,
-    effective_start: s.startDate.toISOString(),
-    effective_end: s.endDate.toISOString(),
-    value: s.quantity,
-    unit: spec.unit,
-    ...originOf(s),
-  }))
-
-  return await send(spec.metric, {
-    metric: spec.metric,
-    anchor: res.newAnchor,
-    observations,
-    deleted_external_ids: res.deletedSamples.map((d) => d.uuid),
-  })
+  return { metric: spec.metric, inserted, deleted }
 }
 
 /**
@@ -104,32 +133,48 @@ async function syncQuantity(
  * rather than time in bed.
  */
 async function syncSleep(anchor: string | undefined): Promise<SyncOutcome> {
-  const res = await queryCategorySamplesWithAnchor(SLEEP_METRIC.identifier, {
-    limit: NO_LIMIT,
-    ...(anchor ? { anchor } : {}),
-  })
+  let cursor = anchor
+  let inserted = 0
+  let deleted = 0
 
-  const observations: ObservationInput[] = res.samples
-    .filter((s) => ASLEEP_VALUES.has(s.value as number))
-    .map((s) => ({
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await queryCategorySamplesWithAnchor(SLEEP_METRIC.identifier, {
+      limit: FETCH_PAGE,
+      ...(cursor ? { anchor: cursor } : {}),
+    })
+
+    const observations: ObservationInput[] = res.samples
+      .filter((s) => ASLEEP_VALUES.has(s.value as number))
+      .map((s) => ({
+        metric: SLEEP_METRIC.metric,
+        external_id: s.uuid,
+        effective_start: s.startDate.toISOString(),
+        effective_end: s.endDate.toISOString(),
+        value: Math.round((s.endDate.getTime() - s.startDate.getTime()) / 1000),
+        unit: SLEEP_METRIC.unit,
+        ...originOf(s),
+      }))
+
+    // Deletions are sent unfiltered. A segment we never stored — an
+    // `awake` stage, say — simply matches nothing, and filtering here
+    // would risk dropping a deletion for a segment we did store.
+    const out = await send(SLEEP_METRIC.metric, {
       metric: SLEEP_METRIC.metric,
-      external_id: s.uuid,
-      effective_start: s.startDate.toISOString(),
-      effective_end: s.endDate.toISOString(),
-      value: Math.round((s.endDate.getTime() - s.startDate.getTime()) / 1000),
-      unit: SLEEP_METRIC.unit,
-      ...originOf(s),
-    }))
+      anchor: res.newAnchor,
+      observations,
+      deleted_external_ids: res.deletedSamples.map((d) => d.uuid),
+    })
 
-  // Deletions are sent unfiltered. A segment we never stored — an `awake`
-  // stage, say — simply matches nothing, and filtering here would risk
-  // dropping a deletion for a segment we did store.
-  return await send(SLEEP_METRIC.metric, {
-    metric: SLEEP_METRIC.metric,
-    anchor: res.newAnchor,
-    observations,
-    deleted_external_ids: res.deletedSamples.map((d) => d.uuid),
-  })
+    inserted += out.inserted
+    deleted += out.deleted
+    cursor = res.newAnchor
+
+    // Note this counts samples BEFORE the asleep filter: a page of pure
+    // `inBed` segments still means HealthKit may have more to give.
+    if (res.samples.length < FETCH_PAGE) break
+  }
+
+  return { metric: SLEEP_METRIC.metric, inserted, deleted }
 }
 
 /**
