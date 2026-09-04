@@ -25,8 +25,12 @@ export type ObservationInput = {
 
 export type MetricBatch = {
   readonly metric: Metric
-  /** Opaque anchor returned by this query, persisted as-is. */
-  readonly anchor: string
+  /**
+   * Opaque anchor returned by this query, persisted as-is. Omitted on all
+   * but the final chunk of a large upload, so the anchor cannot advance
+   * past observations that have not landed yet.
+   */
+  readonly anchor?: string
   readonly observations: readonly ObservationInput[]
   /** uuids HealthKit reported as deleted since the previous anchor. */
   readonly deleted_external_ids: readonly string[]

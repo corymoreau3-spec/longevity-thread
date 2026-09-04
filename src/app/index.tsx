@@ -93,20 +93,36 @@ export default function Observations() {
   const sync = useCallback(async () => {
     setBusy(true)
     setError(null)
+
+    // Syncing and displaying are deliberately separate. A first sync pulls
+    // years of history in many chunked requests; if that were the gate on
+    // reading, the screen would sit empty for minutes and show nothing at
+    // all when a single metric failed.
     try {
       setOutcomes(await syncAll())
+    } catch (err: any) {
+      setError(String(err?.message ?? err))
+    }
+
+    try {
       await load()
     } catch (err: any) {
       setError(String(err?.message ?? err))
-    } finally {
-      setBusy(false)
     }
+
+    setBusy(false)
   }, [load])
 
   useEffect(() => {
+    // Show whatever is already stored before waiting on the network.
+    void load()
     void sync()
-    void startObservers()
-  }, [sync])
+    // Observer registration is fire-and-forget, but an unhandled rejection
+    // here red-screens the whole app, so it is caught and surfaced.
+    startObservers().catch((err: any) =>
+      setError(`observers: ${String(err?.message ?? err)}`),
+    )
+  }, [load, sync])
 
   const failures = outcomes.filter((o) => o.error)
   const discarded = samples.length - daily.reduce((n, d) => n + d.sample_count, 0)

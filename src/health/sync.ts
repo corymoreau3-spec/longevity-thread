@@ -132,8 +132,46 @@ async function syncSleep(anchor: string | undefined): Promise<SyncOutcome> {
   })
 }
 
+/**
+ * Rows per request. A first sync has no anchor, so HealthKit returns the
+ * patient's entire history — years of step samples is far more than one
+ * request body can carry. Splitting keeps each request small.
+ */
+const UPLOAD_CHUNK = 1000
+
+/**
+ * Upload one metric's samples, in chunks.
+ *
+ * The anchor rides on the final chunk only. If an earlier chunk fails the
+ * anchor never advances, so the next run replays the whole window and the
+ * uuid dedup key absorbs whatever already landed. Sending the anchor with
+ * the first chunk would strand every sample after the failure point.
+ */
 async function send(metric: Metric, batch: MetricBatch): Promise<SyncOutcome> {
-  const { inserted, deleted } = await ingestBatch(SOURCE, batch)
+  const all = batch.observations
+  const chunks: (typeof all)[] = []
+  for (let i = 0; i < all.length; i += UPLOAD_CHUNK) {
+    chunks.push(all.slice(i, i + UPLOAD_CHUNK))
+  }
+  // A metric with no new samples still needs one call, to record deletions
+  // and move the anchor forward.
+  if (chunks.length === 0) chunks.push([])
+
+  let inserted = 0
+  let deleted = 0
+
+  for (let i = 0; i < chunks.length; i++) {
+    const isLast = i === chunks.length - 1
+    const res = await ingestBatch(SOURCE, {
+      metric,
+      observations: chunks[i],
+      deleted_external_ids: isLast ? batch.deleted_external_ids : [],
+      ...(isLast ? { anchor: batch.anchor } : {}),
+    })
+    inserted += res.inserted
+    deleted += res.deleted
+  }
+
   return { metric, inserted, deleted }
 }
 

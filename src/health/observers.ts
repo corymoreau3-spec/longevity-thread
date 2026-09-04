@@ -59,7 +59,12 @@ export async function startObservers(): Promise<boolean> {
           console.warn(`[health] observer error for ${args.typeIdentifier}`)
           return
         }
-        void syncOnce()
+        // An unhandled rejection from a background observer red-screens
+        // the app, so failures are logged and dropped here. The next sync
+        // replays them, because the anchor only advances on success.
+        syncOnce().catch(() => {
+          console.warn(`[health] sync failed after change to ${args.typeIdentifier}`)
+        })
       }),
     )
   }
