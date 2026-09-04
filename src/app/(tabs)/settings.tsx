@@ -3,6 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Linking } from 'react-native'
 
+import { registerForPush, type PushRegistration } from '@/lib/push'
 import { supabase } from '@/lib/supabase'
 import { theme } from '@/theme'
 
@@ -25,10 +26,14 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function Settings() {
   const [email, setEmail] = useState<string>('')
+  const [push, setPush] = useState<PushRegistration | null>(null)
 
   const load = useCallback(async () => {
     const { data } = await supabase.auth.getUser()
     setEmail(data.user?.email ?? '')
+    // Registration is idempotent, so re-running on each visit keeps a
+    // reinstalled or restored device's token current.
+    setPush(await registerForPush())
   }, [])
 
   useEffect(() => {
@@ -52,7 +57,49 @@ export default function Settings() {
         >
           <Row label="Signed in as" value={email || '—'} />
           <Row label="Health data" value="Apple Health" />
+          <Row
+            label="Notifications"
+            value={
+              push == null
+                ? '—'
+                : push.status === 'registered'
+                  ? 'On'
+                  : push.status === 'denied'
+                    ? 'Off in iOS Settings'
+                    : 'Unavailable'
+            }
+          />
         </View>
+
+        {/*
+          Stated rather than implied. A patient should know that a
+          notification never carries the finding itself.
+        */}
+        {push?.status === 'registered' ? (
+          <Text
+            style={{
+              fontSize: theme.font.small,
+              color: theme.color.textMuted,
+              marginTop: theme.space(5),
+              lineHeight: 20,
+            }}
+          >
+            Notifications tell you an update is waiting. They never include
+            your health information — you open the app to see it.
+          </Text>
+        ) : null}
+
+        {push?.status === 'unsupported' ? (
+          <Text
+            style={{
+              fontSize: theme.font.tiny,
+              color: theme.color.textFaint,
+              marginTop: theme.space(3),
+            }}
+          >
+            {push.reason}
+          </Text>
+        ) : null}
 
         <Text
           style={{
