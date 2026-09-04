@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Longevity Thread",
-    "slug": "longevity-thread",
+    "slug": "thrivewell-ai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -44,11 +44,19 @@
         }
       ],
       "expo-secure-store",
-      "expo-build-properties"
+      "expo-build-properties",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e64587ac-0cad-49dc-9ad0-0d10546f417a"
+      }
+    },
+    "owner": "thrivewellmjs-team"
   }
 }
