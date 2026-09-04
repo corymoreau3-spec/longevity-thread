@@ -39,18 +39,42 @@ export function MetricCard({ series }: { series: Series }) {
       <Pressable
         style={({ pressed }) => ({
           backgroundColor: theme.color.surface,
-          borderRadius: theme.radius.md,
+          borderRadius: theme.radius.lg,
           borderWidth: 1,
           borderColor: theme.color.border,
           padding: theme.space(4),
           opacity: pressed ? 0.7 : 1,
+          // Matches the raised tiles on the lab dashboard rather than the
+          // flat outline the app had before.
+          shadowColor: '#1A2E2E',
+          shadowOpacity: 0.05,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 2 },
         })}
       >
-        <Text style={{ fontSize: theme.font.small, color: theme.color.textMuted }}>
+        <Text
+          style={{
+            ...theme.eyebrow,
+            fontSize: 10,
+            letterSpacing: 1.2,
+            color: theme.color.textMuted,
+          }}
+        >
           {METRIC_SHORT[series.metric] ?? series.metric}
         </Text>
 
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 2 }}>
+        {/* The metric's tint, echoing the count tiles on the lab surface. */}
+        <View
+          style={{
+            marginTop: theme.space(2),
+            height: 2,
+            width: 24,
+            borderRadius: 2,
+            backgroundColor: tint,
+          }}
+        />
+
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: theme.space(2) }}>
           <Text
             style={{
               fontSize: 28,

@@ -1,40 +1,79 @@
 /**
- * A health app is read in bed at 6am and in a waiting room at 4pm. The
- * palette is deliberately quiet: near-black on off-white, one accent, and
- * colour reserved for things that need attention. Nothing here should
- * feel like an alarm unless it is one.
+ * Thrivewell brand, shared with the web portal.
+ *
+ * The palette is the one the lab dashboard established: deep green header,
+ * cream page, teal as the single accent, gold reserved for emphasis. Colour
+ * carries meaning here — teal/amber/red are the three classification states
+ * from TW-SPEC-DASH-001 and are used for nothing else, so a red dot always
+ * means the same thing whether the patient is looking at a lab marker on
+ * the web or a card on their phone.
+ *
+ * Token values are kept identical to tailwind.config.js in the web repo.
+ * If one moves, move the other.
  */
 export const theme = {
   color: {
+    // Surfaces
     bg: '#FBFBF9',
     surface: '#FFFFFF',
     border: '#E8E6E1',
+    headerBg: '#173A32', // deep green header, as on the lab dashboard
+
+    // Type
     text: '#1A1A18',
     textMuted: '#6B6B66',
     textFaint: '#9C9C96',
-    accent: '#2E6F5E',
-    accentSoft: '#EAF2EF',
+    onHeader: '#FFFFFF',
+    onHeaderMuted: 'rgba(255,255,255,0.55)',
+
+    // Brand
+    accent: '#2A7F7F',      // sage-500, primary brand teal
+    accentBright: '#4FA3A3', // sage-400
+    accentSoft: '#EEF5F5',   // sage-50
+    gold: '#C9A84C',
+    goldSoft: '#F7F0DC',
+    cream: '#F7F5F1',
+
+    // Classification. These three are load-bearing — see above.
+    inRange: '#0D9488',
+    borderline: '#F59E0B',
+    outOfRange: '#EF4444',
+
+    // Attention, for alerts rather than classifications.
     attention: '#B4622E',
     attentionSoft: '#FBF0E8',
   },
   space: (n: number) => n * 4,
-  radius: { sm: 8, md: 14, lg: 20 },
+  radius: { sm: 8, md: 14, lg: 20, xl: 24 },
   font: {
     display: 34,
     title: 22,
     body: 15,
     small: 13,
     tiny: 11,
+    /**
+     * The web pairs Cormorant Garamond with Poppins. Neither ships with
+     * iOS, and adding expo-google-fonts is a dependency that needs Cory's
+     * sign-off. Georgia is already the web stack's declared serif fallback,
+     * so headings match the fallback rendering rather than diverging.
+     */
+    serif: 'Georgia',
+  },
+  /** Uppercase micro-label used above titles, as on the lab dashboard. */
+  eyebrow: {
+    fontSize: 11,
+    letterSpacing: 1.8,
+    textTransform: 'uppercase' as const,
   },
 } as const
 
 /** Colour per metric, used only for chart bars so a glance distinguishes them. */
 export const METRIC_TINT: Record<string, string> = {
-  hrv_sdnn: '#5B7DB1',
+  hrv_sdnn: '#4FA3A3',
   resting_heart_rate: '#B4626F',
-  sleep_duration: '#7A6BA8',
-  steps: '#4E8C6A',
-  vo2_max: '#B58A44',
+  sleep_duration: '#5B7DB1',
+  steps: '#2A7F7F',
+  vo2_max: '#C9A84C',
 }
 
 export const METRIC_LABEL: Record<string, string> = {

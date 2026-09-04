@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Pressable, ScrollView, Text, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
 import { Linking } from 'react-native'
 
 import { registerForPush, type PushRegistration } from '@/lib/push'
 import { supabase } from '@/lib/supabase'
+import { ScreenHeader } from '@/components/ScreenHeader'
 import { theme } from '@/theme'
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -41,9 +41,10 @@ export default function Settings() {
   }, [load])
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.color.bg }} edges={['top']}>
-      <ScrollView contentContainerStyle={{ padding: theme.space(4) }}>
-        <Text style={{ fontSize: theme.font.display, color: theme.color.text }}>Settings</Text>
+    <View style={{ flex: 1, backgroundColor: theme.color.bg }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: theme.space(10) }}>
+        <ScreenHeader title="Settings" />
+        <View style={{ paddingHorizontal: theme.space(5), marginTop: -theme.space(4) }}>
 
         <View
           style={{
@@ -147,7 +148,8 @@ export default function Settings() {
         >
           <Text style={{ color: theme.color.textMuted, fontSize: theme.font.body }}>Sign out</Text>
         </Pressable>
+        </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   )
 }
