@@ -1,9 +1,12 @@
 import { Stack, useRouter, useSegments } from 'expo-router'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, View } from 'react-native'
+import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { StatusBar } from 'expo-status-bar'
 import type { Session } from '@supabase/supabase-js'
 
 import { supabase } from '@/lib/supabase'
+import { theme } from '@/theme'
 
 /**
  * Holds the session and routes on it. Deliberately does not touch
@@ -44,11 +47,35 @@ export default function RootLayout() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: theme.color.bg,
+        }}
+      >
         <ActivityIndicator />
       </View>
     )
   }
 
-  return <Stack screenOptions={{ headerTitle: 'Longevity Thread' }} />
+  return (
+    <SafeAreaProvider>
+      <StatusBar style="dark" />
+      <Stack
+        screenOptions={{
+          contentStyle: { backgroundColor: theme.color.bg },
+          headerStyle: { backgroundColor: theme.color.bg },
+          headerShadowVisible: false,
+          headerTintColor: theme.color.text,
+          headerTitleStyle: { fontSize: theme.font.body },
+        }}
+      >
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="sign-in" options={{ headerShown: false }} />
+        <Stack.Screen name="metric/[metric]" options={{ title: '' }} />
+      </Stack>
+    </SafeAreaProvider>
+  )
 }

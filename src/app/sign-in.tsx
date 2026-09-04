@@ -20,9 +20,12 @@ export default function SignIn() {
     setBusy(true)
     setError(null)
 
+    // Both are trimmed. iOS keyboards and password autofill readily add a
+    // trailing space, and the failure is indistinguishable from a wrong
+    // password — the server just says invalid credentials.
     const { error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
-      password,
+      password: password.trim(),
     })
 
     // Routing is handled by the root layout's auth listener.
